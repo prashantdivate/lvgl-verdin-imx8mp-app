@@ -1,0 +1,8 @@
+{
+  "cmake.configureOnOpen": false,
+  "cmake.generator": "Ninja",
+  "files.associations": {
+    "lv_conf.h": "c"
+  },
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+}
