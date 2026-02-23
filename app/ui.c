@@ -28,7 +28,7 @@
  */
 //#define LOGO_SRC NULL
 //#include "logo.h"
-extern const lv_img_dsc_t mad_logo;
+extern const lv_image_dsc_t mad_logo;
 #define LOGO_SRC (&mad_logo)
 
 /* =========================
@@ -104,7 +104,7 @@ void app_ui_init(void)
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 36);
 
     /* Spinner (animated) */
-    lv_obj_t *spinner = lv_spinner_create(scr, 1100 /*ms*/, 70 /*arc length*/);
+    lv_obj_t *spinner = lv_spinner_create(scr);
     lv_obj_set_size(spinner, 160, 160);
     lv_obj_align(spinner, LV_ALIGN_TOP_MID, 0, 120);
 
