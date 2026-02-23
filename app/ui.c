@@ -13,6 +13,30 @@
 #define COL_RING_BLUE   lv_color_hex(0x2FA8FF)
 #define COL_RING_GREEN  lv_color_hex(0x3DFFB3)
 
+
+/* LVGL v9: use numeric opa (0..255) so we don't depend on LV_OPA_XX macros */
+#ifndef LV_OPA_12
+#define LV_OPA_12   31   /* 12% of 255 */
+#endif
+#ifndef LV_OPA_18
+#define LV_OPA_18   46   /* 18% */
+#endif
+#ifndef LV_OPA_20
+#define LV_OPA_20   64   /* 25% */
+#endif
+#ifndef LV_OPA_30
+#define LV_OPA_30   89   /* 35% */
+#endif
+#ifndef LV_OPA_40
+#define LV_OPA_40   115  /* 45% */
+#endif
+#ifndef LV_OPA_50
+#define LV_OPA_50   140  /* 55% */
+#endif
+#ifndef LV_OPA_70
+#define LV_OPA_70   191  /* 75% */
+#endif
+
 /* ------- Assets (converted with LVGL v9 converter) ------- */
 extern const lv_image_dsc_t mad_logo;    /* your existing mad_logo.c */
 extern const lv_image_dsc_t boot_bg;          /* bg.c */
@@ -208,7 +232,7 @@ void app_ui_init(void)
 
     /* Background image */
     lv_obj_t *bg_img = lv_image_create(scr);
-    lv_image_set_src(bg_img, &bg);
+    lv_image_set_src(bg_img, &boot_bg);
     lv_obj_align(bg_img, LV_ALIGN_CENTER, 0, 0);
     lv_obj_move_background(bg_img);
 
