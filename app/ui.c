@@ -46,7 +46,7 @@
 extern const lv_image_dsc_t mad_logo;      /* your existing mad_logo.c */
 extern const lv_image_dsc_t boot_bg;       /* bg image (full screen) */
 extern const lv_image_dsc_t icon_system;   /* gear */
-extern const lv_image_dsc_t icon_service;  /* cloud */
+extern const lv_image_dsc_t icon_services;  /* cloud */
 extern const lv_image_dsc_t icon_docker;   /* docker */
 
 /* =========================
@@ -325,7 +325,7 @@ void app_ui_init(void)
     lv_obj_set_style_bg_color(div1, lv_color_hex(0x7C90AE), 0);
     lv_obj_set_style_bg_opa(div1, OPA_12, 0);
 
-    create_status_item(bar, 1, &icon_service, "Starting Services...");
+    create_status_item(bar, 1, &icon_services, "Starting Services...");
 
     lv_obj_t *div2 = lv_obj_create(bar);
     lv_obj_remove_style_all(div2);
