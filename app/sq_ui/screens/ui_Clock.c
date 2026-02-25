@@ -40,7 +40,9 @@ void ui_Clock_screen_init(void)
     lv_obj_set_style_bg_image_tiled(ui_Clock, true, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_Date = ui_Small_Label_create(ui_Clock);
-    lv_obj_align_to(ui_Date, ui_Spinner1, LV_ALIGN_OUT_TOP_MID, 0, -25);
+    lv_obj_set_align(ui_Date, LV_ALIGN_TOP_MID);
+    lv_obj_set_x(ui_Date, 0);
+    lv_obj_set_y(ui_Date, 95);
     lv_label_set_text(ui_Date, "Preparing System ...");
     lv_obj_set_style_text_color(ui_Date, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_Date, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
