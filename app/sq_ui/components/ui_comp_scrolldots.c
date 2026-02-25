@@ -15,7 +15,7 @@ lv_obj_t * ui_Scrolldots_create(lv_obj_t * comp_parent)
     lv_obj_set_width(cui_Scrolldots, 65);
     lv_obj_set_height(cui_Scrolldots, 12);
     lv_obj_set_x(cui_Scrolldots, 0);
-    lv_obj_set_y(cui_Scrolldots, -8);
+    lv_obj_set_y(cui_Scrolldots, 0);
     lv_obj_set_align(cui_Scrolldots, LV_ALIGN_BOTTOM_MID);
     lv_obj_remove_flag(cui_Scrolldots, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
     lv_obj_set_style_bg_color(cui_Scrolldots, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);

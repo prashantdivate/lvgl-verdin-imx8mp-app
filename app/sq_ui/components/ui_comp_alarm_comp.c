@@ -42,7 +42,7 @@ lv_obj_t * ui_Alarm_Comp_create(lv_obj_t * comp_parent)
     lv_obj_t * cui_Period;
     cui_Period = ui_Small_Label_create(cui_Alarm_Comp);
     lv_obj_set_x(cui_Period, -5);
-    lv_obj_set_y(cui_Period, -6);
+    lv_obj_set_y(cui_Period, 0);
     lv_obj_set_align(cui_Period, LV_ALIGN_BOTTOM_RIGHT);
     lv_label_set_text(cui_Period, "Wake Up!");
 
