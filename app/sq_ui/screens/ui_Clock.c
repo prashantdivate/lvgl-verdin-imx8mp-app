@@ -40,12 +40,18 @@ void ui_Clock_screen_init(void)
     lv_obj_set_style_bg_image_tiled(ui_Clock, true, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_Date = ui_Small_Label_create(ui_Clock);
-    lv_obj_set_x(ui_Date, -84);
-    lv_obj_set_y(ui_Date, 104);
+    lv_obj_set_align(ui_Date, LV_ALIGN_TOP_MID);
+    lv_obj_set_x(ui_Date, 0);
+    lv_obj_set_y(ui_Date, 28); /* good for 1024x600 */
     lv_label_set_text(ui_Date, "Preparing System ...");
     lv_obj_set_style_text_color(ui_Date, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_Date, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_transform_scale(ui_Date, 500, LV_PART_MAIN | LV_STATE_DEFAULT);
+    /* Remove transform scaling; use a real font size for clarity */
+#if LV_FONT_MONTSERRAT_28
+    lv_obj_set_style_text_font(ui_Date, &lv_font_montserrat_28, LV_PART_MAIN | LV_STATE_DEFAULT);
+#elif LV_FONT_MONTSERRAT_24
+    lv_obj_set_style_text_font(ui_Date, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
+#endif
 
     ui_Spinner1 = lv_spinner_create(ui_Clock);
     //lv_spinner_set_anim_params(ui_Spinner1, 1000, 90);
