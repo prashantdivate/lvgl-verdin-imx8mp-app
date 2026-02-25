@@ -39,7 +39,7 @@
  * Behavior configuration
  * ========================= */
 #ifndef SPLASH_TO_CLOCK_DELAY_MS
-#define SPLASH_TO_CLOCK_DELAY_MS 2000  /* change delay here if needed */
+#define SPLASH_TO_CLOCK_DELAY_MS 15000  /* change delay here if needed */
 #endif
 
 static lv_timer_t *g_to_clock_timer = NULL;
