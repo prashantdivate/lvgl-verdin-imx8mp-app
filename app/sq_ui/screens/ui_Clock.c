@@ -8,13 +8,24 @@
 lv_obj_t * ui_Clock = NULL;
 lv_obj_t * ui_Date = NULL;
 lv_obj_t * ui_Spinner1 = NULL;
-// event funtions
+
+static void _clock_set_opa(void * obj, int32_t v) { lv_obj_set_style_opa((lv_obj_t *)obj, (lv_opa_t)v, LV_PART_MAIN); }
 void ui_event_Clock(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
-
     if(event_code == LV_EVENT_SCREEN_LOAD_START) {
-        upanim_Animation(ui_Date, 200);
+        /* Safe animation: fade-in only (no negative Y) */
+        if(ui_Date) {
+            lv_obj_set_style_opa(ui_Date, 0, LV_PART_MAIN);
+            lv_anim_t a;
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, ui_Date);
+            lv_anim_set_exec_cb(&a, _clock_set_opa);
+            lv_anim_set_values(&a, 0, 255);
+            lv_anim_set_time(&a, 350);
+            lv_anim_set_delay(&a, 120);
+            lv_anim_start(&a);
+        }
     }
 }
 
