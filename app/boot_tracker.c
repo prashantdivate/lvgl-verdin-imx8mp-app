@@ -31,36 +31,38 @@ static const char *friendly_container(const char *name)
     return name;
 }
 
+/* Returns a user-visible component name for an image tag.
+ * If unknown, returns the prefix itself (e.g. "chromium-imx8", "lobby-panel-ems-db"). */
 static const char *friendly_image_tag(const char *tag)
 {
-    /* prefix = everything before ':' */
     static char prefix[128];
+
+    /* prefix = everything before ':' */
     const char *colon = strchr(tag, ':');
     size_t n = colon ? (size_t)(colon - tag) : strlen(tag);
     if(n >= sizeof(prefix)) n = sizeof(prefix) - 1;
     memcpy(prefix, tag, n);
     prefix[n] = '\0';
 
+    /* known mappings (your original set) */
     if(strcmp(prefix, "library") == 0) return "Core System Libraries";
     if(strcmp(prefix, "hermes") == 0) return "System Communication Service";
     if(strcmp(prefix, "mosaicone") == 0) return "Cloud Connectivity Service";
     if(strcmp(prefix, "matisse-voip-client") == 0) return "Video Messaging Service";
     if(strcmp(prefix, "sceniq") == 0) return "User Interface";
-    return "System component";
+
+    /* fallback: show actual prefix */
+    return prefix[0] ? prefix : "System";
 }
 
 /* -------- shared state -------- */
 static pthread_t g_log_thread;
 static bool g_running = false;
-
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* Import state (so container polling doesn't overwrite import messages) */
 static bool g_import_active = false;
 static char g_import_component[128] = {0};
-static int g_done_layers = 0;
-static int g_total_layers = 0;
-static bool g_have_layers = false;
 
 /* Container running state */
 static bool g_container_running[5] = {false, false, false, false, false};
@@ -87,25 +89,10 @@ static void ui_update_cb(void *p)
     free(u);
 }
 
-static void push_ui_step(splash_step_t step)
-{
-    ui_update_t *u = calloc(1, sizeof(*u));
-    u->set_step = true;
-    u->step = step;
-    lv_async_call(ui_update_cb, u);
-}
-
-static void push_ui_message(const char *msg)
-{
-    ui_update_t *u = calloc(1, sizeof(*u));
-    u->set_msg = true;
-    snprintf(u->msg, sizeof(u->msg), "%s", msg ? msg : "");
-    lv_async_call(ui_update_cb, u);
-}
-
 static void push_ui_step_and_message(splash_step_t step, const char *msg)
 {
     ui_update_t *u = calloc(1, sizeof(*u));
+    if(!u) return;
     u->set_step = true;
     u->step = step;
     u->set_msg = true;
@@ -113,43 +100,36 @@ static void push_ui_step_and_message(splash_step_t step, const char *msg)
     lv_async_call(ui_update_cb, u);
 }
 
-/* -------- BOOTPROG parsing -------- */
+/* -------- BOOTPROG parsing helpers -------- */
+
 static void import_set_active(const char *image_tag)
 {
     pthread_mutex_lock(&g_lock);
     g_import_active = true;
     snprintf(g_import_component, sizeof(g_import_component), "%s", friendly_image_tag(image_tag));
-    g_done_layers = 0;
-    g_total_layers = 0;
-    g_have_layers = false;
     pthread_mutex_unlock(&g_lock);
 
     /* IMPORTANT: immediate message (your “older fix”) */
     char buf[256];
-    snprintf(buf, sizeof(buf), "Preparing %s...", friendly_image_tag(image_tag));
+    snprintf(buf, sizeof(buf), "Preparing %s... ", friendly_image_tag(image_tag));
     push_ui_step_and_message(SPLASH_STEP_SYSTEM, buf);
 }
 
 static void import_update_layers(int done, int total)
 {
     pthread_mutex_lock(&g_lock);
-    if(!g_import_active) {
-        pthread_mutex_unlock(&g_lock);
-        return;
-    }
-    g_done_layers = done;
-    g_total_layers = total;
-    g_have_layers = (total > 0);
+    bool active = g_import_active;
     char comp[128];
     snprintf(comp, sizeof(comp), "%s", g_import_component);
     pthread_mutex_unlock(&g_lock);
 
-    if(total > 0) {
-        int pct = (int)((done * 100) / total);
-        char buf[256];
-        snprintf(buf, sizeof(buf), "Preparing %s... %d%% (%d/%d)", comp, pct, done, total);
-        push_ui_step_and_message(SPLASH_STEP_SYSTEM, buf);
-    }
+    if(!active) return;
+    if(total <= 0) return;
+
+    int pct = (int)((done * 100) / total);
+    char buf[256];
+    snprintf(buf, sizeof(buf), "Preparing %s... %d%% (%d/%d)", comp, pct, done, total);
+    push_ui_step_and_message(SPLASH_STEP_SYSTEM, buf);
 }
 
 static void import_clear(void)
@@ -157,10 +137,41 @@ static void import_clear(void)
     pthread_mutex_lock(&g_lock);
     g_import_active = false;
     g_import_component[0] = '\0';
-    g_done_layers = 0;
-    g_total_layers = 0;
-    g_have_layers = false;
     pthread_mutex_unlock(&g_lock);
+}
+
+/* Extract first token from a string (skips leading spaces).
+ * Writes into out (null-terminated). */
+static void first_token(const char *s, char *out, size_t out_sz)
+{
+    if(!out || out_sz == 0) return;
+    out[0] = '\0';
+    if(!s) return;
+
+    while(*s == ' ') s++;
+    if(*s == '\0') return;
+
+    /* token ends at space or newline */
+    size_t i = 0;
+    while(*s && *s != ' ' && *s != '\n' && *s != '\r') {
+        if(i + 1 < out_sz) out[i++] = *s;
+        s++;
+    }
+    out[i] = '\0';
+}
+
+/* If we're not currently importing, infer import context from an image token. */
+static void ensure_import_active_from_token(const char *image_token)
+{
+    if(!image_token || !image_token[0]) return;
+
+    pthread_mutex_lock(&g_lock);
+    bool active = g_import_active;
+    pthread_mutex_unlock(&g_lock);
+
+    if(!active) {
+        import_set_active(image_token);
+    }
 }
 
 /* Parse one full log line */
@@ -170,14 +181,42 @@ static void handle_podkeeper_line(const char *line)
     if(!p) return;
     p += 9;
 
+    /* IMAGE_IMPORT_START <tag> */
     if(strncmp(p, "IMAGE_IMPORT_START ", 18) == 0) {
-        const char *tag = p + 18;
-        while(*tag == ' ') tag++;
-        import_set_active(tag);
+        const char *rest = p + 18;
+        char img[256];
+        first_token(rest, img, sizeof(img));
+        if(img[0]) import_set_active(img);
         return;
     }
 
+    /* NEW: IMAGE_PLAN <tag> ... */
+    if(strncmp(p, "IMAGE_PLAN ", 11) == 0) {
+        const char *rest = p + 11;
+        char img[256];
+        first_token(rest, img, sizeof(img));
+        ensure_import_active_from_token(img);
+        return;
+    }
+
+    /* NEW: SKOPEO <tag> ... */
+    if(strncmp(p, "SKOPEO ", 7) == 0) {
+        const char *rest = p + 7;
+        char img[256];
+        first_token(rest, img, sizeof(img));
+        ensure_import_active_from_token(img);
+        return;
+    }
+
+    /* BLOB_DONE <tag> ... done_layers=.. total_layers=.. */
     if(strncmp(p, "BLOB_DONE ", 10) == 0) {
+        const char *rest = p + 10;
+
+        /* NEW: infer current import if we missed IMAGE_IMPORT_START */
+        char img[256];
+        first_token(rest, img, sizeof(img));
+        ensure_import_active_from_token(img);
+
         /* Extract done_layers and total_layers */
         const char *dl = strstr(p, "done_layers=");
         const char *tl = strstr(p, "total_layers=");
@@ -194,7 +233,6 @@ static void handle_podkeeper_line(const char *line)
         return;
     }
 
-    /* Optional: if READY comes in, we can mark done */
     if(strncmp(p, "READY", 5) == 0) {
         import_clear();
         push_ui_step_and_message(SPLASH_STEP_DONE, "Ready.");
@@ -233,7 +271,6 @@ static void *log_thread_fn(void *arg)
 
 static void poll_podman_ps(void)
 {
-    /* Run podman ps, collect names */
     FILE *fp = popen("podman ps --format \"{{.Names}}\"", "r");
     if(!fp) return;
 
@@ -266,7 +303,6 @@ static void poll_podman_ps(void)
     /* If importing images, do NOT overwrite the import UI */
     if(importing) return;
 
-    /* Determine overall “step” + message */
     int running_count = 0;
     for(int i = 0; i < CONTAINER_COUNT; i++) {
         if(running_now[i]) running_count++;
@@ -286,6 +322,7 @@ static void poll_podman_ps(void)
                 break;
             }
         }
+
         if(active) {
             char msg[256];
             snprintf(msg, sizeof(msg), "Starting %s...", friendly_container(active));
@@ -296,11 +333,9 @@ static void poll_podman_ps(void)
         return;
     }
 
-    /* All containers running */
     push_ui_step_and_message(SPLASH_STEP_DONE, "Launching user interface...");
 }
 
-/* LVGL timer callback */
 static void poll_timer_cb(lv_timer_t *t)
 {
     (void)t;
@@ -325,10 +360,8 @@ void boot_tracker_start(void)
     g_running = true;
     pthread_mutex_unlock(&g_lock);
 
-    /* Start log follower thread */
     pthread_create(&g_log_thread, NULL, log_thread_fn, NULL);
 
-    /* Start LVGL poll timer (container truth) */
     if(!g_poll_timer) {
         g_poll_timer = lv_timer_create(poll_timer_cb, 800, NULL);
     }
@@ -345,6 +378,5 @@ void boot_tracker_stop(void)
         g_poll_timer = NULL;
     }
 
-    /* Best effort join */
     pthread_join(g_log_thread, NULL);
 }
