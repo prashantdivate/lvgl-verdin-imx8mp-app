@@ -1,7 +1,8 @@
 #include "ui.h"
 #include "lvgl/lvgl.h"
-#include <string.h>
+
 #include <stdio.h>
+#include <string.h>
 
 /* SquareLine public headers (your exported UI under app/sq_ui) */
 #include "sq_ui/sq_ui.h"
@@ -10,12 +11,10 @@
 
 /*
  * SquareLine sources compiled by inclusion to avoid build-system changes.
- * (So your existing CMake patch that only compiles app/*.c still works.)
+ * (So your existing build that compiles app/*.c still works.)
  */
-
 /* helpers */
 #include "sq_ui/sq_ui_helpers.c"
-
 /* components */
 #include "sq_ui/components/ui_comp.c"
 #include "sq_ui/components/ui_comp_alarm_comp.c"
@@ -23,28 +22,27 @@
 #include "sq_ui/components/ui_comp_hook.c"
 #include "sq_ui/components/ui_comp_scrolldots.c"
 #include "sq_ui/components/ui_comp_small_label.c"
-
 /* screens */
 #include "sq_ui/screens/ui_Splash.c"
 #include "sq_ui/screens/ui_Clock.c"
-
 /* fonts + images */
 #include "sq_ui/fonts/ui_font_Number.c"
 #include "sq_ui/images/ui_img_mad_logo_png.c"
-
 /* main SquareLine glue (keep last) */
 #include "sq_ui/sq_ui.c"
+
+#include "boot_tracker.h"
 
 /* =========================
  * Behavior configuration
  * ========================= */
 #ifndef SPLASH_TO_CLOCK_DELAY_MS
-#define SPLASH_TO_CLOCK_DELAY_MS 30000  /* change delay here if needed */
+#define SPLASH_TO_CLOCK_DELAY_MS 30000 /* change delay here if needed */
 #endif
 
 static lv_timer_t *g_to_clock_timer = NULL;
 static splash_step_t g_last_step = SPLASH_STEP_SYSTEM;
-static char g_last_msg[128] = "Preparing System ...";
+static char g_last_msg[256] = "Preparing System ...";
 
 /* Forward */
 static void apply_step_to_clock(splash_step_t step);
@@ -79,6 +77,9 @@ void app_ui_init(void)
     apply_step_to_clock(SPLASH_STEP_SYSTEM);
     apply_message_to_clock("Preparing System ...");
 
+    /* Start boot tracking (log follower + podman polling) */
+    boot_tracking_start();
+
     /* Schedule Splash -> Clock transition */
     if(g_to_clock_timer) {
         lv_timer_del(g_to_clock_timer);
@@ -92,7 +93,10 @@ static void apply_message_to_clock(const char *msg)
 {
     if(msg == NULL) return;
 
-    /* In your SquareLine export, the "Preparing System ..." label on Clock is ui_Date */
+    /*
+     * In your SquareLine export, the status label on Clock is ui_Date
+     * (as used in your current ui.c).
+     */
     if(ui_Date) {
         lv_label_set_text(ui_Date, msg);
     }
@@ -109,20 +113,20 @@ static void apply_step_to_clock(splash_step_t step)
     /* Default step-to-text mapping on Clock label (ui_Date) */
     if(ui_Date) {
         switch(step) {
-            case SPLASH_STEP_SYSTEM:
-                lv_label_set_text(ui_Date, "Preparing System ...");
-                break;
-            case SPLASH_STEP_SERVICES:
-                lv_label_set_text(ui_Date, "Starting Services ...");
-                break;
-            case SPLASH_STEP_DOCKER:
-                lv_label_set_text(ui_Date, "Loading Containers ...");
-                break;
-            case SPLASH_STEP_DONE:
-                lv_label_set_text(ui_Date, "Ready.");
-                break;
-            default:
-                break;
+        case SPLASH_STEP_SYSTEM:
+            lv_label_set_text(ui_Date, "Preparing System ...");
+            break;
+        case SPLASH_STEP_SERVICES:
+            lv_label_set_text(ui_Date, "Starting Services ...");
+            break;
+        case SPLASH_STEP_DOCKER:
+            lv_label_set_text(ui_Date, "Loading Containers ...");
+            break;
+        case SPLASH_STEP_DONE:
+            lv_label_set_text(ui_Date, "Ready.");
+            break;
+        default:
+            break;
         }
     }
 }
@@ -130,8 +134,6 @@ static void apply_step_to_clock(splash_step_t step)
 void splash_set_step(splash_step_t step)
 {
     g_last_step = step;
-
-    /* If Clock exists, apply immediately (safe even if still on Splash) */
     apply_step_to_clock(step);
 }
 
@@ -139,7 +141,6 @@ void splash_set_message(const char *msg)
 {
     if(msg == NULL) return;
 
-    /* Store for later (when Clock loads) */
     snprintf(g_last_msg, sizeof(g_last_msg), "%s", msg);
 
     /* If Clock label exists update it */
@@ -153,3 +154,7 @@ void splash_set_message(const char *msg)
         lv_label_set_text(ui_Startup_H1, msg);
     }
 }
+
+/* Thin wrappers so other code doesn't include boot_tracker.h directly */
+void boot_tracking_start(void) { boot_tracker_start(); }
+void boot_tracking_stop(void)  { boot_tracker_stop(); }

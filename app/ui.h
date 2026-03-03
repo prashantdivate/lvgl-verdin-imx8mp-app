@@ -1,5 +1,6 @@
 #pragma once
-#include <stdint.h>
+
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,8 +14,13 @@ typedef enum {
 } splash_step_t;
 
 void app_ui_init(void);
+
 void splash_set_step(splash_step_t step);
 void splash_set_message(const char *msg);
+
+/* Boot tracker control (starts log follower + container polling) */
+void boot_tracking_start(void);
+void boot_tracking_stop(void);
 
 #ifdef __cplusplus
 } /* extern "C" */
