@@ -4,8 +4,8 @@
 extern "C" {
 #endif
 
+/* Start background tracker thread */
 void boot_tracker_start(void);
-void boot_tracker_stop(void);
 
 #ifdef __cplusplus
 }
