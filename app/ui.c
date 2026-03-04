@@ -102,7 +102,7 @@ static void styles_init(void) {
     lv_style_set_radius(&st_bar_ind, 10);
 
     lv_style_init(&st_micro_bg);
-    lv_style_set_bg_opa(&st_micro_bg, LV_OPA_18);
+    lv_style_set_bg_opa(&st_micro_bg, LV_OPA_20);
     lv_style_set_bg_color(&st_micro_bg, lv_color_hex(0xFFFFFF));
     lv_style_set_radius(&st_micro_bg, 10);
 
