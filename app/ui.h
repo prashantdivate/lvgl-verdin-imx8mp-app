@@ -11,19 +11,25 @@ typedef enum {
     SPLASH_STEP_DONE = 3
 } splash_step_t;
 
+/* Entry */
 void app_ui_init(void);
 
-/* High-level UI updates */
+/* Thread-safe UI updates (safe to call from boot_tracker thread) */
 void splash_set_step(splash_step_t step);
 void splash_set_message(const char *msg);
+void splash_set_subtitle(const char *subtitle);
 
-/* Progress helpers */
-void splash_set_overall_progress(int percent);          /* 0..100 */
-void splash_set_import_progress(const char *component,  /* e.g. "Chromium" */
-                                int done_layers,
-                                int total_layers);
+/* Overall progress 0..100 */
+void splash_set_overall_progress(int percent);
 
-/* Boot tracker control */
+/* Image import progress (layers) */
+void splash_set_import_progress(const char *image_tag, int done_layers, int total_layers);
+
+/* Container checklist updates */
+void splash_set_container_wait(const char *name);
+void splash_set_container_running(const char *name);
+
+/* Boot tracker control (wrappers) */
 void boot_tracking_start(void);
 void boot_tracking_stop(void);
 
