@@ -97,17 +97,15 @@ static const char *friendly_phase_from_step(splash_step_t s)
     }
 }
 
-/* A small helper: best-effort friendly name based on image tag prefix */
+/* Best-effort friendly name based on image tag prefix */
 static const char *friendly_image_prefix(const char *tag)
 {
     if (!tag) return "System component";
-    /* prefix before ':' */
     static char buf[128];
     snprintf(buf, sizeof(buf), "%s", tag);
     char *colon = strchr(buf, ':');
     if (colon) *colon = '\0';
 
-    /* You can extend these mappings as needed */
     if (strcmp(buf, "chromium-imx8") == 0) return "Chromium";
     if (strcmp(buf, "lobby-panel-ems-db") == 0) return "Database";
     if (strcmp(buf, "lobby-panel-ems") == 0) return "Application";
@@ -132,7 +130,7 @@ static void ensure_overlay_ui(void)
     if (!ui_Clock) return;
     if (g_card) return;
 
-    /* Optional: hide SquareLine widgets that conflict with our overlay */
+    /* Hide SquareLine widgets that conflict with our overlay */
     if (ui_Date) lv_obj_add_flag(ui_Date, LV_OBJ_FLAG_HIDDEN);
     if (ui_Startup_H1) lv_obj_add_flag(ui_Startup_H1, LV_OBJ_FLAG_HIDDEN);
     if (ui_Spinner1) lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
@@ -168,10 +166,17 @@ static void ensure_overlay_ui(void)
     lv_obj_set_style_text_font(g_subtitle, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_opa(g_subtitle, LV_OPA_70, 0);
 
-    g_spinner = lv_spinner_create(hdr, 900, 60);
+    /* LVGL version in your build only supports lv_spinner_create(parent) */
+    g_spinner = lv_spinner_create(hdr);
     lv_obj_set_size(g_spinner, 46, 46);
 
-    /* Overall progress row: bar + percent (INSIDE same row, no OUT_RIGHT alignment) */
+    /* If your LVGL has these APIs, keep them (they exist in v8/v9). */
+#if defined(LV_USE_SPINNER) && LV_USE_SPINNER
+    /* Typical “nice” spinner config */
+    lv_spinner_set_anim_params(g_spinner, 900, 60);
+#endif
+
+    /* Overall progress row: bar + percent (inside row, no OUT_RIGHT) */
     lv_obj_t *prow = lv_obj_create(g_card);
     lv_obj_remove_style_all(prow);
     lv_obj_set_width(prow, LV_PCT(100));
@@ -272,21 +277,16 @@ static void row_set_state(container_row_t *r, int state)
     r->state = state;
 
     if (state == 2) {
-        /* OK */
         lv_label_set_text(r->icon, "✓");
         lv_obj_set_style_text_opa(r->icon, LV_OPA_COVER, 0);
         lv_obj_set_style_text_color(r->icon, lv_color_hex(0x48D38A), 0);
-
         lv_obj_set_style_text_opa(r->label, LV_OPA_COVER, 0);
     } else if (state == 1) {
-        /* Active / waiting */
         lv_label_set_text(r->icon, ">");
         lv_obj_set_style_text_opa(r->icon, LV_OPA_COVER, 0);
         lv_obj_set_style_text_color(r->icon, lv_color_hex(0x7AA7FF), 0);
-
         lv_obj_set_style_text_opa(r->label, LV_OPA_COVER, 0);
     } else {
-        /* Pending */
         lv_label_set_text(r->icon, "●");
         lv_obj_set_style_text_opa(r->icon, LV_OPA_40, 0);
         lv_obj_set_style_text_opa(r->label, LV_OPA_80, 0);
@@ -343,7 +343,6 @@ static void ui_apply_cb(void *arg)
             if (g_status_right) lv_label_set_text(g_status_right, "…");
         }
     } else {
-        /* no import active -> show message line */
         if (g_status_left) lv_label_set_text(g_status_left, s.status_left[0] ? s.status_left : "Preparing…");
         if (g_micro_bar) lv_bar_set_value(g_micro_bar, 0, LV_ANIM_OFF);
         if (g_status_right) lv_label_set_text(g_status_right, s.status_right[0] ? s.status_right : "");
@@ -373,7 +372,7 @@ static void schedule_apply_locked(void)
 
 void app_ui_init(void)
 {
-    ui_init(); /* SquareLine init */
+    ui_init();
     if (ui_Clock) lv_scr_load(ui_Clock);
 
     pthread_mutex_lock(&g_state_mu);
@@ -393,9 +392,6 @@ void splash_set_step(splash_step_t step)
 {
     pthread_mutex_lock(&g_state_mu);
     g_state.step = step;
-    if (!g_state.subtitle[0]) {
-        snprintf(g_state.subtitle, sizeof(g_state.subtitle), "%s", friendly_phase_from_step(step));
-    }
     schedule_apply_locked();
     pthread_mutex_unlock(&g_state_mu);
 }
@@ -405,7 +401,7 @@ void splash_set_message(const char *msg)
     if (!msg) return;
     pthread_mutex_lock(&g_state_mu);
     snprintf(g_state.status_left, sizeof(g_state.status_left), "%s", msg);
-    g_state.image_tag[0] = '\0'; /* message mode */
+    g_state.image_tag[0] = '\0';
     g_state.has_wait = 0;
     g_state.has_running = 0;
     schedule_apply_locked();
