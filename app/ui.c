@@ -1,318 +1,280 @@
 #include "ui.h"
+#include "boot_tracker.h"
+
 #include "lvgl/lvgl.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
 
-/* ---------- Look & feel ---------- */
-static lv_style_t st_screen;
+/* ---------- UI objects ---------- */
+
+static lv_obj_t *g_root;
+static lv_obj_t *g_card;
+
+static lv_obj_t *g_title;
+static lv_obj_t *g_subtitle;
+
+static lv_obj_t *g_bar;
+static lv_obj_t *g_percent;
+
+static lv_obj_t *g_spinner;
+
+static lv_obj_t *g_detail_left;   /* "Preparing <image>…" / "Starting <container>…" */
+static lv_obj_t *g_detail_right;  /* "72% (13/18)" */
+
 static lv_style_t st_card;
 static lv_style_t st_title;
 static lv_style_t st_subtitle;
-static lv_style_t st_label;
-static lv_style_t st_dim;
-static lv_style_t st_bar_bg;
-static lv_style_t st_bar_ind;
-static lv_style_t st_micro_bg;
-static lv_style_t st_micro_ind;
+static lv_style_t st_detail;
+static lv_style_t st_muted;
 
-typedef struct {
-    char name[64];
-    lv_obj_t *row;
-    lv_obj_t *dot;
-    lv_obj_t *txt;
-    int state; /* 0=pending, 1=active, 2=ok */
-} row_t;
+/* progress state */
+static int g_pct = 0;
 
-#define MAX_ROWS 10
-static row_t g_rows[MAX_ROWS];
-static int g_row_count = 0;
-
-/* ---------- Widgets ---------- */
-static lv_obj_t *g_card;
-static lv_obj_t *g_title;
-static lv_obj_t *g_subtitle;
-static lv_obj_t *g_overall;
-static lv_obj_t *g_overall_txt;
-static lv_obj_t *g_status_left;
-static lv_obj_t *g_micro;
-static lv_obj_t *g_status_right;
-static lv_obj_t *g_list;
-static lv_obj_t *g_spinner;
-
-/* ---------- Helpers ---------- */
-static int clampi(int v, int lo, int hi) { return (v < lo) ? lo : (v > hi ? hi : v); }
-
-static const char *friendly_image_prefix(const char *tag) {
-    if(!tag || !tag[0]) return "System component";
-
-    static char buf[128];
-    snprintf(buf, sizeof(buf), "%s", tag);
-    char *colon = strchr(buf, ':');
-    if(colon) *colon = '\0';
-
-    if(strcmp(buf, "chromium-imx8") == 0) return "Chromium";
-    if(strcmp(buf, "lobby-panel-ems-db") == 0) return "Database";
-    if(strcmp(buf, "lobby-panel-ems") == 0) return "Application";
-    if(strcmp(buf, "weston-vivante") == 0) return "Display Server";
-    return "System component";
-}
+/* ---------- helpers ---------- */
 
 static void styles_init(void) {
-    lv_style_init(&st_screen);
-    lv_style_set_bg_opa(&st_screen, LV_OPA_COVER);
-    lv_style_set_bg_color(&st_screen, lv_color_hex(0x070C14));
-
     lv_style_init(&st_card);
     lv_style_set_radius(&st_card, 18);
-    lv_style_set_bg_opa(&st_card, LV_OPA_40);
-    lv_style_set_bg_color(&st_card, lv_color_hex(0xFFFFFF));
+    lv_style_set_bg_opa(&st_card, LV_OPA_50);
+    lv_style_set_bg_color(&st_card, lv_color_hex(0x1B2333));
     lv_style_set_border_width(&st_card, 1);
-    lv_style_set_border_opa(&st_card, LV_OPA_20);
+    lv_style_set_border_opa(&st_card, LV_OPA_30);
     lv_style_set_border_color(&st_card, lv_color_hex(0xFFFFFF));
-    lv_style_set_pad_all(&st_card, 22);
-    lv_style_set_pad_row(&st_card, 14);
-    lv_style_set_pad_column(&st_card, 14);
+    lv_style_set_pad_all(&st_card, 26);
 
     lv_style_init(&st_title);
     lv_style_set_text_color(&st_title, lv_color_hex(0xF4F7FF));
-    lv_style_set_text_font(&st_title, &lv_font_montserrat_28);
+    lv_style_set_text_font(&st_title, LV_FONT_DEFAULT);
 
     lv_style_init(&st_subtitle);
-    lv_style_set_text_color(&st_subtitle, lv_color_hex(0xF4F7FF));
-    lv_style_set_text_opa(&st_subtitle, LV_OPA_70);
-    lv_style_set_text_font(&st_subtitle, &lv_font_montserrat_16);
+    lv_style_set_text_color(&st_subtitle, lv_color_hex(0xB8C3D6));
+    lv_style_set_text_font(&st_subtitle, LV_FONT_DEFAULT);
 
-    lv_style_init(&st_label);
-    lv_style_set_text_color(&st_label, lv_color_hex(0xEAF0FF));
-    lv_style_set_text_font(&st_label, &lv_font_montserrat_16);
+    lv_style_init(&st_detail);
+    lv_style_set_text_color(&st_detail, lv_color_hex(0xEAF0FF));
+    lv_style_set_text_font(&st_detail, LV_FONT_DEFAULT);
 
-    lv_style_init(&st_dim);
-    lv_style_set_text_color(&st_dim, lv_color_hex(0xF4F7FF));
-    lv_style_set_text_opa(&st_dim, LV_OPA_60);
-    lv_style_set_text_font(&st_dim, &lv_font_montserrat_14);
-
-    lv_style_init(&st_bar_bg);
-    lv_style_set_bg_opa(&st_bar_bg, LV_OPA_20);
-    lv_style_set_bg_color(&st_bar_bg, lv_color_hex(0xFFFFFF));
-    lv_style_set_radius(&st_bar_bg, 10);
-
-    lv_style_init(&st_bar_ind);
-    lv_style_set_bg_opa(&st_bar_ind, LV_OPA_COVER);
-    lv_style_set_bg_color(&st_bar_ind, lv_color_hex(0x7AA7FF));
-    lv_style_set_radius(&st_bar_ind, 10);
-
-    lv_style_init(&st_micro_bg);
-    lv_style_set_bg_opa(&st_micro_bg, LV_OPA_20);
-    lv_style_set_bg_color(&st_micro_bg, lv_color_hex(0xFFFFFF));
-    lv_style_set_radius(&st_micro_bg, 10);
-
-    lv_style_init(&st_micro_ind);
-    lv_style_set_bg_opa(&st_micro_ind, LV_OPA_COVER);
-    lv_style_set_bg_color(&st_micro_ind, lv_color_hex(0x49E0FF));
-    lv_style_set_radius(&st_micro_ind, 10);
+    lv_style_init(&st_muted);
+    lv_style_set_text_color(&st_muted, lv_color_hex(0x8C98AE));
+    lv_style_set_text_font(&st_muted, LV_FONT_DEFAULT);
 }
 
-static row_t *get_row(const char *name) {
-    for(int i = 0; i < g_row_count; i++) {
-        if(strcmp(g_rows[i].name, name) == 0) return &g_rows[i];
-    }
-    if(g_row_count >= MAX_ROWS) return NULL;
+static void ui_build(void) {
+    g_root = lv_scr_act();
+    lv_obj_set_style_bg_color(g_root, lv_color_hex(0x070C14), 0);
+    lv_obj_set_style_bg_opa(g_root, LV_OPA_COVER, 0);
 
-    row_t *r = &g_rows[g_row_count++];
-    memset(r, 0, sizeof(*r));
-    snprintf(r->name, sizeof(r->name), "%s", name);
-    r->state = 0;
-
-    r->row = lv_obj_create(g_list);
-    lv_obj_remove_style_all(r->row);
-    lv_obj_set_width(r->row, LV_PCT(100));
-    lv_obj_set_height(r->row, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(r->row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(r->row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(r->row, 10, 0);
-
-    r->dot = lv_obj_create(r->row);
-    lv_obj_set_size(r->dot, 10, 10);
-    lv_obj_set_style_radius(r->dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_opa(r->dot, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(r->dot, lv_color_hex(0x7C8799), 0);
-
-    r->txt = lv_label_create(r->row);
-    lv_obj_add_style(r->txt, &st_label, 0);
-    lv_label_set_text(r->txt, name);
-
-    return r;
-}
-
-static void set_row_state(row_t *r, int state) {
-    if(!r) return;
-    r->state = state;
-
-    if(state == 2) { /* ok */
-        lv_obj_set_style_bg_color(r->dot, lv_color_hex(0x48D38A), 0);
-        lv_label_set_text_fmt(r->txt, "%s  (OK)", r->name);
-        lv_obj_set_style_text_color(r->txt, lv_color_hex(0xEAF0FF), 0);
-        lv_obj_set_style_text_opa(r->txt, LV_OPA_COVER, 0);
-    } else if(state == 1) { /* active */
-        lv_obj_set_style_bg_color(r->dot, lv_color_hex(0x7AA7FF), 0);
-        lv_label_set_text_fmt(r->txt, "%s  (starting…)", r->name);
-        lv_obj_set_style_text_color(r->txt, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_text_opa(r->txt, LV_OPA_COVER, 0);
-    } else { /* pending */
-        lv_obj_set_style_bg_color(r->dot, lv_color_hex(0x7C8799), 0);
-        lv_label_set_text(r->txt, r->name);
-        lv_obj_set_style_text_color(r->txt, lv_color_hex(0xEAF0FF), 0);
-        lv_obj_set_style_text_opa(r->txt, LV_OPA_70, 0);
-    }
-}
-
-/* ---------- Build UI ---------- */
-void app_ui_init(void) {
-    styles_init();
-
-    lv_obj_t *scr = lv_scr_act();
-    lv_obj_clean(scr);                 /* IMPORTANT: no overlay + no ghost widgets */
-    lv_obj_add_style(scr, &st_screen, 0);
-
-    g_card = lv_obj_create(scr);
+    g_card = lv_obj_create(g_root);
     lv_obj_add_style(g_card, &st_card, 0);
-    lv_obj_set_size(g_card, 760, 380);
+    lv_obj_set_size(g_card, 820, 320);
     lv_obj_center(g_card);
+
+    /* Layout inside card */
     lv_obj_set_flex_flow(g_card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(g_card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_flex_align(g_card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    /* Header row */
-    lv_obj_t *hdr = lv_obj_create(g_card);
-    lv_obj_remove_style_all(hdr);
-    lv_obj_set_width(hdr, LV_PCT(100));
-    lv_obj_set_height(hdr, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(hdr, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(hdr, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_t *hdr_left = lv_obj_create(hdr);
-    lv_obj_remove_style_all(hdr_left);
-    lv_obj_set_flex_flow(hdr_left, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(hdr_left, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-
-    g_title = lv_label_create(hdr_left);
+    /* Title */
+    g_title = lv_label_create(g_card);
     lv_obj_add_style(g_title, &st_title, 0);
     lv_label_set_text(g_title, "System Starting");
+    lv_obj_set_style_text_font(g_title, LV_FONT_DEFAULT, 0);
 
-    g_subtitle = lv_label_create(hdr_left);
+    /* Subtitle */
+    g_subtitle = lv_label_create(g_card);
     lv_obj_add_style(g_subtitle, &st_subtitle, 0);
-    lv_label_set_text(g_subtitle, "Preparing device…");
+    lv_label_set_text(g_subtitle, "Waiting for podkeeper…");
+    lv_obj_set_style_pad_top(g_subtitle, 8, 0);
 
-    /* Spinner (LVGL API: create(parent) only) */
-    g_spinner = lv_spinner_create(hdr);
-    lv_obj_set_size(g_spinner, 44, 44);
-#if LVGL_VERSION_MAJOR >= 8
-    /* Safe on LVGL v8+ if enabled; if not, it compiles out */
-    lv_spinner_set_anim_params(g_spinner, 900, 90);
-#endif
+    /* spacing */
+    lv_obj_t *sp = lv_obj_create(g_card);
+    lv_obj_set_size(sp, 1, 12);
+    lv_obj_set_style_bg_opa(sp, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(sp, 0, 0);
 
-    /* Overall progress bar */
-    g_overall = lv_bar_create(g_card);
-    lv_obj_set_width(g_overall, LV_PCT(100));
-    lv_obj_set_height(g_overall, 16);
-    lv_bar_set_range(g_overall, 0, 100);
-    lv_bar_set_value(g_overall, 0, LV_ANIM_OFF);
-    lv_obj_add_style(g_overall, &st_bar_bg, LV_PART_MAIN);
-    lv_obj_add_style(g_overall, &st_bar_ind, LV_PART_INDICATOR);
+    /* Row: progress bar + percent + spinner aligned right */
+    lv_obj_t *row = lv_obj_create(g_card);
+    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    g_overall_txt = lv_label_create(g_card);
-    lv_obj_add_style(g_overall_txt, &st_dim, 0);
-    lv_label_set_text(g_overall_txt, "0%");
+    g_bar = lv_bar_create(row);
+    lv_obj_set_size(g_bar, 520, 16);
+    lv_bar_set_range(g_bar, 0, 100);
+    lv_bar_set_value(g_bar, 0, LV_ANIM_OFF);
 
-    /* Status row: left + microbar + right */
-    lv_obj_t *status = lv_obj_create(g_card);
-    lv_obj_remove_style_all(status);
-    lv_obj_set_width(status, LV_PCT(100));
-    lv_obj_set_height(status, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(status, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(status, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    g_percent = lv_label_create(row);
+    lv_obj_add_style(g_percent, &st_detail, 0);
+    lv_label_set_text(g_percent, "0%");
+    lv_obj_set_style_pad_left(g_percent, 12, 0);
 
-    g_status_left = lv_label_create(status);
-    lv_obj_add_style(g_status_left, &st_label, 0);
-    lv_label_set_text(g_status_left, "Waiting for podkeeper…");
+    /* spacer */
+    lv_obj_t *row_sp = lv_obj_create(row);
+    lv_obj_set_flex_grow(row_sp, 1);
+    lv_obj_set_style_bg_opa(row_sp, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row_sp, 0, 0);
+    lv_obj_set_height(row_sp, 1);
 
-    lv_obj_t *micro_wrap = lv_obj_create(status);
-    lv_obj_remove_style_all(micro_wrap);
-    lv_obj_set_flex_flow(micro_wrap, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(micro_wrap, 10, 0);
+    /* Spinner (LVGL signature in your build is lv_spinner_create(parent) only) */
+    g_spinner = lv_spinner_create(row);
+    lv_obj_set_size(g_spinner, 28, 28);
 
-    g_micro = lv_bar_create(micro_wrap);
-    lv_obj_set_size(g_micro, 220, 8);
-    lv_bar_set_range(g_micro, 0, 100);
-    lv_bar_set_value(g_micro, 0, LV_ANIM_OFF);
-    lv_obj_add_style(g_micro, &st_micro_bg, LV_PART_MAIN);
-    lv_obj_add_style(g_micro, &st_micro_ind, LV_PART_INDICATOR);
+    /* Details row */
+    lv_obj_t *drow = lv_obj_create(g_card);
+    lv_obj_set_size(drow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(drow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(drow, 0, 0);
+    lv_obj_set_style_pad_top(drow, 12, 0);
+    lv_obj_set_flex_flow(drow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(drow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    g_status_right = lv_label_create(micro_wrap);
-    lv_obj_add_style(g_status_right, &st_dim, 0);
-    lv_label_set_text(g_status_right, "");
+    g_detail_left = lv_label_create(drow);
+    lv_obj_add_style(g_detail_left, &st_muted, 0);
+    lv_label_set_text(g_detail_left, "Waiting for podkeeper…");
+    lv_label_set_long_mode(g_detail_left, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(g_detail_left, 560);
 
-    /* Container checklist */
-    g_list = lv_obj_create(g_card);
-    lv_obj_remove_style_all(g_list);
-    lv_obj_set_width(g_list, LV_PCT(100));
-    lv_obj_set_flex_flow(g_list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(g_list, 10, 0);
-
-    /* Defaults */
-    lv_obj_add_flag(g_micro, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(g_status_right, LV_OBJ_FLAG_HIDDEN);
+    g_detail_right = lv_label_create(drow);
+    lv_obj_add_style(g_detail_right, &st_muted, 0);
+    lv_label_set_text(g_detail_right, "");
+    lv_obj_set_style_pad_left(g_detail_right, 12, 0);
 }
 
-/* ---------- Public setters ---------- */
+/* Clamp helper */
+static int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+/* ---------- thread-safe async setters ---------- */
+
+typedef struct {
+    char *s;
+} str_msg_t;
+
+typedef struct {
+    int pct;
+} pct_msg_t;
+
+typedef struct {
+    char *tag;
+    int done;
+    int total;
+} imp_msg_t;
+
+static void async_set_subtitle(void *p) {
+    str_msg_t *m = (str_msg_t *)p;
+    if(m && m->s) lv_label_set_text(g_subtitle, m->s);
+    if(m) { free(m->s); free(m); }
+}
+
+static void async_set_phase_detail(void *p) {
+    str_msg_t *m = (str_msg_t *)p;
+    if(m && m->s) lv_label_set_text(g_detail_left, m->s);
+    if(m) { free(m->s); free(m); }
+}
+
+static void async_set_pct(void *p) {
+    pct_msg_t *m = (pct_msg_t *)p;
+    if(!m) return;
+
+    g_pct = clampi(m->pct, 0, 100);
+    lv_bar_set_value(g_bar, g_pct, LV_ANIM_OFF);
+
+    char tmp[16];
+    snprintf(tmp, sizeof(tmp), "%d%%", g_pct);
+    lv_label_set_text(g_percent, tmp);
+
+    free(m);
+}
+
+static void async_set_import(void *p) {
+    imp_msg_t *m = (imp_msg_t *)p;
+    if(!m) return;
+
+    /* Left text: Preparing <image>… */
+    if(m->tag && m->tag[0]) {
+        char left[512];
+        snprintf(left, sizeof(left), "Preparing %s…", m->tag);
+        lv_label_set_text(g_detail_left, left);
+
+        /* Right text: x% (done/total) if possible */
+        if(m->total > 0) {
+            int pct = (int)((m->done * 100.0f) / (float)m->total);
+            pct = clampi(pct, 0, 100);
+            char right[64];
+            snprintf(right, sizeof(right), "%d%% (%d/%d)", pct, m->done, m->total);
+            lv_label_set_text(g_detail_right, right);
+
+            /* Also drive overall bar a bit (import dominates early boot) */
+            int overall = clampi((int)(pct * 0.75f), 0, 95);
+            lv_bar_set_value(g_bar, overall, LV_ANIM_OFF);
+            char tmp[16];
+            snprintf(tmp, sizeof(tmp), "%d%%", overall);
+            lv_label_set_text(g_percent, tmp);
+        } else {
+            lv_label_set_text(g_detail_right, "…");
+        }
+    }
+
+    free(m->tag);
+    free(m);
+}
+
 void ui_set_phase_text(const char *subtitle) {
-    if(!g_subtitle) return;
-    if(!subtitle) subtitle = "";
-    lv_label_set_text(g_subtitle, subtitle);
+    /* Update subtitle + left detail line consistently */
+    str_msg_t *m1 = calloc(1, sizeof(*m1));
+    str_msg_t *m2 = calloc(1, sizeof(*m2));
+    if(!m1 || !m2) { free(m1); free(m2); return; }
+
+    m1->s = strdup(subtitle ? subtitle : "");
+    m2->s = strdup(subtitle ? subtitle : "");
+    lv_async_call(async_set_subtitle, m1);
+    lv_async_call(async_set_phase_detail, m2);
 }
 
 void ui_set_overall_percent(int pct) {
-    if(!g_overall || !g_overall_txt) return;
-    pct = clampi(pct, 0, 100);
-    lv_bar_set_value(g_overall, pct, LV_ANIM_OFF);
-
-    if(pct >= 95) lv_label_set_text(g_overall_txt, "Finalizing…");
-    else lv_label_set_text_fmt(g_overall_txt, "%d%%", pct);
+    pct_msg_t *m = calloc(1, sizeof(*m));
+    if(!m) return;
+    m->pct = pct;
+    lv_async_call(async_set_pct, m);
 }
 
 void ui_set_import_status(const char *image_tag, int done_layers, int total_layers) {
-    if(!g_status_left) return;
-
-    if(image_tag && image_tag[0]) {
-        const char *comp = friendly_image_prefix(image_tag);
-        lv_label_set_text_fmt(g_status_left, "Preparing %s…", comp);
-
-        if(total_layers > 0) {
-            int lp = (int)((100.0f * (float)done_layers) / (float)total_layers);
-            lp = clampi(lp, 0, 100);
-            lv_bar_set_value(g_micro, lp, LV_ANIM_OFF);
-
-            lv_obj_clear_flag(g_micro, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(g_status_right, LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text_fmt(g_status_right, "%d%% (%d/%d)", lp, done_layers, total_layers);
-        } else {
-            lv_obj_clear_flag(g_micro, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(g_status_right, LV_OBJ_FLAG_HIDDEN);
-            lv_bar_set_value(g_micro, 20, LV_ANIM_OFF);
-            lv_label_set_text(g_status_right, "…");
-        }
-    } else {
-        lv_label_set_text(g_status_left, "Starting device services…");
-        lv_obj_add_flag(g_micro, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(g_status_right, LV_OBJ_FLAG_HIDDEN);
-    }
+    imp_msg_t *m = calloc(1, sizeof(*m));
+    if(!m) return;
+    m->tag = strdup(image_tag ? image_tag : "");
+    m->done = done_layers;
+    m->total = total_layers;
+    lv_async_call(async_set_import, m);
 }
 
 void ui_set_container_active(const char *name) {
-    row_t *r = get_row(name ? name : "");
-    set_row_state(r, 1);
+    char buf[256];
+    snprintf(buf, sizeof(buf), "Starting %s…", name ? name : "service");
+    str_msg_t *m = calloc(1, sizeof(*m));
+    if(!m) return;
+    m->s = strdup(buf);
+    lv_async_call(async_set_phase_detail, m);
 }
 
 void ui_set_container_ok(const char *name) {
-    row_t *r = get_row(name ? name : "");
-    set_row_state(r, 2);
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s is running", name ? name : "service");
+    str_msg_t *m = calloc(1, sizeof(*m));
+    if(!m) return;
+    m->s = strdup(buf);
+    lv_async_call(async_set_phase_detail, m);
+}
+
+void app_ui_init(void) {
+    static bool inited = false;
+    if(inited) return;
+    inited = true;
+
+    styles_init();
+    ui_build();
+
+    /* IMPORTANT: start tracker automatically so main.c needs ONLY app_ui_init() */
+    boot_tracker_start();
 }
