@@ -7,10 +7,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <errno.h>
 #include <stdlib.h>
 
-/* Podkeeper log path on device */
 #ifndef PODKEEPER_LOG_PATH
 #define PODKEEPER_LOG_PATH "/var/log/podkeeper.log"
 #endif
@@ -18,13 +16,12 @@
 static pthread_t g_thread;
 static bool g_started = false;
 
-/* ---------- small helpers ---------- */
+/* ---------- helpers ---------- */
 
 static bool file_exists_and_readable(const char *path) {
     return access(path, R_OK) == 0;
 }
 
-/* Extract int key=value from a line, returns true if found */
 static bool parse_int_kv(const char *s, const char *key, int *out) {
     const char *p = strstr(s, key);
     if(!p) return false;
@@ -38,7 +35,6 @@ static bool parse_int_kv(const char *s, const char *key, int *out) {
     return true;
 }
 
-/* Extract first token after event name: e.g. "IMAGE_PLAN foo:tag total_layers=.." -> foo:tag */
 static void parse_first_arg(const char *rest, char *dst, size_t dst_sz) {
     if(dst_sz == 0) return;
     dst[0] = '\0';
@@ -50,23 +46,27 @@ static void parse_first_arg(const char *rest, char *dst, size_t dst_sz) {
     dst[i] = '\0';
 }
 
-/* Map PHASE to human-friendly UI subtitle */
 static const char *phase_to_subtitle(const char *phase) {
-    if(strcmp(phase, "START") == 0) return "Preparing device…";
-    if(strcmp(phase, "IMAGE_IMPORT_BEGIN") == 0) return "Preparing system software…";
-    if(strcmp(phase, "VERIFY_IMAGES_BEGIN") == 0) return "Verifying system software…";
-    if(strcmp(phase, "VERIFY_IMAGES_DONE") == 0) return "Verifying system software…";
-    if(strcmp(phase, "COMPOSE_UP_BEGIN") == 0) return "Starting device services…";
-    if(strcmp(phase, "CONTAINERS_WAIT_BEGIN") == 0) return "Final system checks…";
-    if(strcmp(phase, "DOWN_BEGIN") == 0) return "Stopping services…";
+    if(strcmp(phase, "START") == 0) return "Preparing device...";
+    if(strcmp(phase, "IMAGE_IMPORT_BEGIN") == 0) return "Preparing system software...";
+    if(strcmp(phase, "VERIFY_IMAGES_BEGIN") == 0) return "Verifying system software...";
+    if(strcmp(phase, "VERIFY_IMAGES_DONE") == 0) return "Verifying system software...";
+    if(strcmp(phase, "COMPOSE_UP_BEGIN") == 0) return "Starting device services...";
+    if(strcmp(phase, "CONTAINERS_WAIT_BEGIN") == 0) return "Final system checks...";
+    if(strcmp(phase, "DOWN_BEGIN") == 0) return "Stopping services...";
     if(strcmp(phase, "DOWN_DONE") == 0) return "Stopped";
-    return "Preparing device…";
+    return "Preparing device...";
+}
+
+static int overall_from_layers(int done_layers, int total_layers) {
+    if(total_layers <= 0) return 0;
+    int pct = (int)((done_layers * 100.0f) / (float)total_layers);
+    if(pct < 0) pct = 0;
+    if(pct > 95) pct = 95;
+    return pct;
 }
 
 static void handle_bootprog_line(const char *line) {
-    /* Expected format:
-       BOOTPROG <EVENT> <REST...>
-     */
     const char *pfx = "BOOTPROG ";
     if(strncmp(line, pfx, strlen(pfx)) != 0) return;
 
@@ -75,7 +75,6 @@ static void handle_bootprog_line(const char *line) {
     char event[64];
     event[0] = '\0';
 
-    /* split first token */
     const char *sp = strchr(payload, ' ');
     if(sp) {
         size_t n = (size_t)(sp - payload);
@@ -83,7 +82,6 @@ static void handle_bootprog_line(const char *line) {
         memcpy(event, payload, n);
         event[n] = '\0';
     } else {
-        /* payload contains only event */
         strncpy(event, payload, sizeof(event) - 1);
         event[sizeof(event) - 1] = '\0';
         sp = payload + strlen(payload);
@@ -98,46 +96,33 @@ static void handle_bootprog_line(const char *line) {
         return;
     }
 
-    if(strcmp(event, "TOTAL") == 0) {
-        /* optional, we can ignore or use later */
-        return;
-    }
-
     if(strcmp(event, "IMAGE_IMPORT_START") == 0) {
         char tag[256];
         parse_first_arg(rest, tag, sizeof(tag));
-        ui_set_import_status(tag, 0, 0); /* show image tag immediately; total unknown */
+        ui_set_import_status(tag, 0, 0);
         return;
     }
 
     if(strcmp(event, "IMAGE_PLAN") == 0) {
         char tag[256];
         parse_first_arg(rest, tag, sizeof(tag));
-        int tl = 0, tb = 0;
-        (void)tb;
+        int tl = 0;
         parse_int_kv(rest, "total_layers", &tl);
-        parse_int_kv(rest, "total_bytes", &tb);
         ui_set_import_status(tag, 0, tl);
         return;
     }
 
     if(strcmp(event, "BLOB_DONE") == 0) {
-        /* line contains done_layers, total_layers and current image tag at start */
         char tag[256];
         parse_first_arg(rest, tag, sizeof(tag));
 
-        int dl = 0, tl = 0;
+        int dl = 0;
+        int tl = 0;
         parse_int_kv(rest, "done_layers", &dl);
         parse_int_kv(rest, "total_layers", &tl);
 
-        /* Sometimes podkeeper lines are slightly truncated (you have total_byt6 etc),
-           but done_layers/total_layers are present — so we rely on those. */
         ui_set_import_status(tag[0] ? tag : NULL, dl, tl);
-        return;
-    }
-
-    if(strcmp(event, "IMAGE_IMPORT_DONE") == 0) {
-        /* keep last import status; next IMAGE_IMPORT_START will overwrite */
+        ui_set_overall_percent(overall_from_layers(dl, tl));
         return;
     }
 
@@ -156,7 +141,7 @@ static void handle_bootprog_line(const char *line) {
     }
 
     if(strcmp(event, "READY") == 0 || strcmp(event, "DONE") == 0) {
-        ui_set_phase_text("Launching user interface…");
+        ui_set_phase_text("Launching user interface...");
         ui_set_overall_percent(100);
         return;
     }
@@ -167,11 +152,8 @@ static void handle_bootprog_line(const char *line) {
     }
 }
 
-/* Tail file from end and process new lines, with periodic reopen support */
 static void *tracker_thread(void *arg) {
     (void)arg;
-
-    ui_set_phase_text("Waiting for podkeeper…");
 
     FILE *fp = NULL;
     struct stat st_prev;
@@ -181,33 +163,30 @@ static void *tracker_thread(void *arg) {
     char buf[1024];
 
     for(;;) {
-        /* Ensure file exists */
         if(!fp) {
             if(!file_exists_and_readable(PODKEEPER_LOG_PATH)) {
-                ui_set_phase_text("Waiting for podkeeper…");
+                ui_set_phase_text("Waiting for podkeeper...");
                 sleep(1);
                 continue;
             }
 
             fp = fopen(PODKEEPER_LOG_PATH, "r");
             if(!fp) {
-                ui_set_phase_text("Waiting for podkeeper…");
+                ui_set_phase_text("Waiting for podkeeper...");
                 sleep(1);
                 continue;
             }
 
-            /* Stat and remember inode; seek end to act like `tail -n 0 -f` */
             struct stat st_now;
             if(stat(PODKEEPER_LOG_PATH, &st_now) == 0) {
                 st_prev = st_now;
                 have_prev_stat = true;
             }
-            fseeko(fp, 0, SEEK_END);
 
-            ui_set_phase_text("Preparing system software…");
+            fseeko(fp, 0, SEEK_END);
+            ui_set_phase_text("Preparing system software...");
         }
 
-        /* Detect log rotation/recreate (inode change) */
         if(have_prev_stat) {
             struct stat st_now;
             if(stat(PODKEEPER_LOG_PATH, &st_now) == 0) {
@@ -215,24 +194,20 @@ static void *tracker_thread(void *arg) {
                     fclose(fp);
                     fp = NULL;
                     have_prev_stat = false;
-                    ui_set_phase_text("Waiting for podkeeper…");
+                    ui_set_phase_text("Waiting for podkeeper...");
                     continue;
                 }
             }
         }
 
-        /* Non-blocking-ish follow: try read; if none, sleep and continue */
         if(fgets(buf, sizeof(buf), fp)) {
-            /* strip newline */
             size_t n = strlen(buf);
             while(n && (buf[n-1] == '\n' || buf[n-1] == '\r')) buf[--n] = '\0';
 
-            /* Ignore random non-BOOTPROG lines */
             if(strncmp(buf, "BOOTPROG ", 9) == 0) {
                 handle_bootprog_line(buf);
             }
         } else {
-            /* No new data yet */
             clearerr(fp);
             usleep(200 * 1000);
         }
@@ -253,7 +228,6 @@ void boot_tracker_start(void) {
     pthread_attr_destroy(&attr);
 
     if(rc != 0) {
-        /* If thread creation fails, show an error but keep UI alive */
         ui_set_phase_text("Failed to start tracker thread");
     }
 }
