@@ -181,7 +181,7 @@ static void recovery_menu_create(void)
 
 void app_ui_init(void)
 {
-    ui_init();              /* keep bg-overlay SquareLine/startup code alive */
+    //ui_init();              /* keep bg-overlay SquareLine/startup code alive */
     recovery_menu_create(); /* recovery UI appears above it */
 }
 
