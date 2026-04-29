@@ -4,13 +4,16 @@
 extern "C" {
 #endif
 
-void app_ui_init(void);
+typedef enum {
+    SPLASH_STEP_SYSTEM = 0,
+    SPLASH_STEP_SERVICES = 1,
+    SPLASH_STEP_DOCKER = 2,
+    SPLASH_STEP_DONE = 3
+} splash_step_t;
 
-void ui_set_phase_text(const char *subtitle);
-void ui_set_overall_percent(int pct);
-void ui_set_import_status(const char *image_tag, int done_layers, int total_layers);
-void ui_set_container_active(const char *name);
-void ui_set_container_ok(const char *name);
+void app_ui_init(void);
+void splash_set_step(splash_step_t step);
+void splash_set_message(const char *msg);
 
 #ifdef __cplusplus
 }
