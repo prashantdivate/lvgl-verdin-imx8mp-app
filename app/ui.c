@@ -14,8 +14,8 @@
 
 //#define CMD_RESTART_CHROMIUM "sudo systemctl restart chromium"
 #define CMD_REBOOT_DEVICE    "sh -c '(systemctl reboot || reboot) >/tmp/menu-reboot.log 2>&1 &'"
-#define CMD_SSH_ON           "systemctl start sshd.socket 2>/dev/null || systemctl start ssh.socket 2>/dev/null || systemctl start sshd.service 2>/dev/null || systemctl start ssh.service 2>/dev/null"
-#define CMD_SSH_OFF          "systemctl stop sshd.socket 2>/dev/null; systemctl stop ssh.socket 2>/dev/null; systemctl stop sshd.service 2>/dev/null; systemctl stop ssh.service 2>/dev/null; true"
+#define CMD_SSH_ON           "systemctl enable --now sshd.socket && sync"
+#define CMD_SSH_OFF          "systemctl disable --now sshd.socket && sync"
 #define CMD_CLOSE_MENU       "sh -c '(if [ -d /apps/mad-lcp-containers ]; then (cd /apps/mad-lcp-containers && podman-compose -f docker-compose.yml up -d >/tmp/menu-compose.log 2>&1 &); fi; sleep 0.2; pkill -x bootsplash 2>/dev/null; pkill -x lvglsim 2>/dev/null; pkill -x menu 2>/dev/null; true) >/tmp/menu-close.log 2>&1 &'"
 
 #define COL_BG          lv_color_hex(0xF1F3F4)
