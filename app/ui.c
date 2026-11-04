@@ -16,7 +16,7 @@
 #define CMD_REBOOT_DEVICE    "sh -c '(systemctl reboot || reboot) >/tmp/menu-reboot.log 2>&1 &'"
 #define CMD_SSH_ON           "systemctl enable --now sshd.socket && sync"
 #define CMD_SSH_OFF          "systemctl disable --now sshd.socket && sync"
-#define CMD_CLOSE_MENU       "sh -c '(if [ -d /apps/mad-lcp-containers ]; then (cd /apps/mad-lcp-containers && podman-compose -f docker-compose.yml up -d >/tmp/menu-compose.log 2>&1 &); fi; sleep 0.2; pkill -x bootsplash 2>/dev/null; pkill -x lvglsim 2>/dev/null; pkill -x menu 2>/dev/null; true) >/tmp/menu-close.log 2>&1 &'"
+#define CMD_CLOSE_MENU       "mad-menu-control hide"
 
 #define COL_BG          lv_color_hex(0xF1F3F4)
 #define COL_BG_2        lv_color_hex(0xE8EAED)

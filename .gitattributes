@@ -1,0 +1,2 @@
+# Keep the menu source portable between Windows editors and Yocto.
+app/ui.c text eol=lf
